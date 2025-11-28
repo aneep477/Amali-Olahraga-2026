@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>E-Pentaksiran MPU3411</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* CSS Tambahan */
+        body { background-color: #f3f4f6; }
+        .rubric-list li { margin-bottom: 4px; }
+        /* Hilangkan arrow pada input number */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body>
+
+<div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative pb-28">
+
+    <div class="bg-indigo-900 text-white p-5 sticky top-0 z-40 rounded-b-2xl shadow-lg">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h1 class="font-extrabold text-xl tracking-tight">MPU3411 <span class="text-yellow-400">AMALI</span></h1>
+                <p class="text-[10px] text-indigo-200 opacity-80">Sistem Penilaian Langsung</p>
+            </div>
+            
+            <div class="bg-indigo-950 rounded-lg p-1 flex shadow-inner">
+                <button @click="currentPenilai = 'Penilai 1'" :class="currentPenilai === 'Penilai 1' ? 'bg-yellow-400 text-indigo-900 font-bold shadow-md' : 'text-indigo-400 hover:text-white'" class="px-3 py-1 text-xs rounded transition-all duration-200">P1</button>
+                <button @click="currentPenilai = 'Penilai 2'" :class="currentPenilai === 'Penilai 2' ? 'bg-yellow-400 text-indigo-900 font-bold shadow-md' : 'text-indigo-400 hover:text-white'" class="px-3 py-1 text-xs rounded transition-all duration-200">P2</button>
+            </div>
+        </div>
+
+        <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-filter text-indigo-400 group-focus-within:text-indigo-600"></i>
+            </div>
+            <select v-model="selectedClass" class="w-full pl-9 pr-3 py-3 rounded-xl text-indigo-900 font-bold text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 appearance-none bg-white">
+                <option value="">-- SILA PILIH KELAS --</option>
+                <option v-for="cls in uniqueClasses" :value="cls">{{ cls }}</option>
+            </select>
+            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-indigo-900">
+                <i class="fas fa-chevron-down text-xs"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-4">
+        
+        <div v-if="loading" class="flex flex-col items-center justify-center mt-20 text-gray-500 animate-pulse">
+            <i class="fas fa-circle-notch fa-spin text-4xl mb-3 text-indigo-600"></i>
+            <p class="text-xs font-semibold">Sedang menghubungi Google Sheets...</p>
+        </div>
+
+        <div v-else-if="!selectedClass" class="text-center mt-16 opacity-50 px-10">
+            <i class="fas fa-users-class text-5xl mb-4 text-indigo-300"></i>
+            <h3 class="font-bold text-gray-600">Pilih Kelas Dahulu</h3>
+            <p class="text-xs mt-1">Sila pilih kelas di bahagian atas untuk memaparkan senarai nama pelajar.</p>
+        </div>
+
+        <div v-else>
+            <div class="flex justify-between items-end mb-3 px-1">
+                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ filteredStudents.length }} PELAJAR DIJUMPAI</span>
+                <button @click="showRubric = true" class="text-[10px] bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-bold border border-indigo-100 hover:bg-indigo-100 transition"><i class="fas fa-info-circle mr-1"></i>Rubrik</button>
+            </div>
+
+            <div v-for="student in filteredStudents" :key="student.kp" class="bg-white border border-gray-100 rounded-xl shadow-sm mb-4 overflow-hidden hover:shadow-md transition-shadow duration-300">
+                
+                <div class="p-4 bg-gradient-to-r from-gray-50 to-white border-b flex justify-between items-start">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
+                            {{ student.nama.substring(0,2) }}
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-sm text-gray-800 leading-tight">{{ student.nama }}</h3>
+                            <p class="text-[10px] text-gray-400 font-mono mt-0.5">{{ student.kp }}</p>
+                        </div>
+                    </div>
+                    
+                    <span v-if="checkStatus(student)" class="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded-md font-bold border border-green-200 flex items-center shadow-sm">
+                        <i class="fas fa-check mr-1"></i> SIAP
+                    </span>
+                    <span v-else class="text-[9px] bg-gray-100 text-gray-400 px-2 py-1 rounded-md font-bold border border-gray-200">
+                        BELUM
+                    </span>
+                </div>
+
+                <div class="p-4 bg-white">
+                    <div class="grid gap-3 mb-4" :class="currentCategory === 'larian' ? 'grid-cols-3' : 'grid-cols-4'">
+                        
+                        <template v-if="currentCategory === 'larian'">
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Mula</label>
+                                <input type="number" v-model="student.tempScore[0]" placeholder="10" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Lari</label>
+                                <input type="number" v-model="student.tempScore[1]" placeholder="10" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Tamat</label>
+                                <input type="number" v-model="student.tempScore[2]" placeholder="5" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                        </template>
+
+                        <template v-else>
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Sedia</label>
+                                <input type="number" v-model="student.tempScore[0]" placeholder="5" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Lungsur</label>
+                                <input type="number" v-model="student.tempScore[1]" placeholder="10" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Lontar</label>
+                                <input type="number" v-model="student.tempScore[2]" placeholder="5" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                            <div class="text-center">
+                                <label class="block text-[8px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Pulih</label>
+                                <input type="number" v-model="student.tempScore[3]" placeholder="5" class="w-full text-center bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm font-bold focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition">
+                            </div>
+                        </template>
+                    </div>
+
+                    <button @click="submitScore(student)" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg shadow-md font-bold text-xs hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center space-x-2">
+                        <i class="fas fa-save"></i>
+                        <span>SIMPAN REKOD ({{ currentPenilai }})</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="h-10"></div>
+        </div>
+    </div>
+
+    <div v-if="showRubric" class="fixed inset-0 bg-gray-900 bg-opacity-70 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-hidden flex flex-col transform transition-all scale-100">
+            <div class="p-4 bg-indigo-50 border-b flex justify-between items-center">
+                <h3 class="font-bold text-indigo-900 flex items-center"><i class="fas fa-book-open mr-2"></i> Panduan Rubrik</h3>
+                <button @click="showRubric = false" class="text-gray-400 hover:text-red-500 transition"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            
+            <div class="p-5 overflow-y-auto text-xs text-gray-700 leading-relaxed">
+                
+                <div v-if="currentCategory === 'larian'">
+                    <div class="mb-4">
+                        <h4 class="font-bold text-indigo-700 mb-1">1. Fasa Permulaan (Max 10m)</h4>
+                        <ul class="list-disc pl-4 space-y-1 rubric-list text-gray-600">
+                            <li><strong class="text-green-600">9-10:</strong> Blok betul, dekam tepat, reaksi pantas.</li>
+                            <li><strong class="text-yellow-600">5-6:</strong> Blok betul tapi bantuan minimum.</li>
+                            <li><strong class="text-red-600"><4:</strong> Teknik salah / perlu bantuan.</li>
+                        </ul>
+                    </div>
+                    <div class="mb-4">
+                        <h4 class="font-bold text-indigo-700 mb-1">2. Fasa Larian (Max 10m)</h4>
+                        <ul class="list-disc pl-4 space-y-1 rubric-list text-gray-600">
+                            <li><strong class="text-green-600">9-10:</strong> Ayunan tangan/kaki selaras, postur condong tepat.</li>
+                            <li><strong class="text-red-600"><4:</strong> Larian kaku, tegak terlalu awal.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-indigo-700 mb-1">3. Fasa Penamat (Max 5m)</h4>
+                        <ul class="list-disc pl-4 space-y-1 rubric-list text-gray-600">
+                            <li><strong class="text-green-600">5:</strong> Torso ke depan, kelajuan kekal.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div v-else>
+                    <div class="mb-3">
+                        <h4 class="font-bold text-indigo-700 mb-1">1. Persediaan (Max 5m)</h4>
+                        <p>Pegang pangkal jari, rapat di leher, berdiri membelakangkan kawasan.</p>
+                    </div>
+                    <div class="mb-3">
+                        <h4 class="font-bold text-indigo-700 mb-1">2. Lungsuran (Max 10m)</h4>
+                        <p>Gelongsoran rendah & pantas, kaki kanan dibawa cepat ke pusat.</p>
+                    </div>
+                    <div class="mb-3">
+                        <h4 class="font-bold text-indigo-700 mb-1">3. Lontaran (Max 5m)</h4>
+                        <p>Ekstensi tangan lurus, sudut ~45 darjah.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-indigo-700 mb-1">4. Pulihan (Max 5m)</h4>
+                        <p>Imbangan dikawal, tidak pijak papan penahan.</p>
+                    </div>
+                </div>
+
+            </div>
+            
+            <div class="p-3 border-t bg-gray-50">
+                <button @click="showRubric = false" class="w-full bg-indigo-100 text-indigo-700 py-2 rounded-lg text-sm font-bold hover:bg-indigo-200 transition">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 pb-6 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] max-w-md mx-auto z-40">
+        <button @click="switchCategory('larian')" :class="currentCategory === 'larian' ? 'text-indigo-600 bg-indigo-50' : 'text-gray-400 hover:text-gray-600'" class="flex flex-col items-center w-1/2 mx-2 py-2 rounded-xl transition-all">
+            <i class="fas fa-running text-xl mb-1"></i>
+            <span class="text-[10px] font-bold tracking-wide">AMALI LARIAN</span>
+        </button>
+        <button @click="switchCategory('lontaran')" :class="currentCategory === 'lontaran' ? 'text-indigo-600 bg-indigo-50' : 'text-gray-400 hover:text-gray-600'" class="flex flex-col items-center w-1/2 mx-2 py-2 rounded-xl transition-all">
+            <i class="fas fa-baseball-ball text-xl mb-1"></i>
+            <span class="text-[10px] font-bold tracking-wide">AMALI LONTARAN</span>
+        </button>
+    </div>
+
+</div>
+
+<script>
+    const { createApp } = Vue;
+
+    // *** INI URL PENTING ANDA ***
+    const API_URL = 'https://script.google.com/macros/s/AKfycbxeQGBUIqx126w7tZa2xUouiaz5iqJMNK8EqxQmAve12mAWLhEWo_2OKYB-DBeAtaOG/exec'; 
+
+    createApp({
+        data() {
+            return {
+                loading: true,
+                showRubric: false,
+                students: [],
+                uniqueClasses: [],
+                selectedClass: '',
+                currentPenilai: 'Penilai 1',
+                currentCategory: 'larian' 
+            }
+        },
+        computed: {
+            filteredStudents() {
+                // Tunjuk pelajar ikut kelas yang dipilih sahaja
+                if (!this.selectedClass) return [];
+                return this.students.filter(s => s.kelas === this.selectedClass);
+            }
+        },
+        methods: {
+            async fetchData() {
+                this.loading = true;
+                try {
+                    // Panggil data dari Google Sheet guna URL anda
+                    const response = await fetch(API_URL); 
+                    const data = await response.json();
+                    
+                    // Proses data supaya sedia untuk input markah
+                    this.students = data.map(s => ({
+                        ...s,
+                        // Reset input form kepada kosong
+                        tempScore: this.currentCategory === 'larian' ? [null, null, null] : [null, null, null, null]
+                    }));
+
+                    // Cari senarai kelas unik (Contoh: BMMB1, PSVK1)
+                    const classes = new Set(data.map(s => s.kelas).filter(c => c)); 
+                    this.uniqueClasses = Array.from(classes).sort();
+
+                    this.loading = false;
+                } catch (e) {
+                    console.error("Ralat memuat turun data:", e);
+                    alert("Gagal menyambung ke database. Sila refresh.");
+                    this.loading = false;
+                }
+            },
+            switchCategory(cat) {
+                this.currentCategory = cat;
+                // Bersihkan input bila tukar tab
+                this.students.forEach(s => {
+                    s.tempScore = cat === 'larian' ? [null, null, null] : [null, null, null, null];
+                });
+            },
+            checkStatus(student) {
+                // Check jika markah dah ada dalam database untuk penilai semasa
+                if (this.currentCategory === 'larian') {
+                    return this.currentPenilai === 'Penilai 1' ? student.larian_p1 : student.larian_p2;
+                } else {
+                    return this.currentPenilai === 'Penilai 1' ? student.lontaran_p1 : student.lontaran_p2;
+                }
+            },
+            async submitScore(student) {
+                // Semak jika ada kotak kosong
+                if (student.tempScore.some(s => s === null || s === '')) {
+                    alert("Sila isi semua markah sebelum simpan.");
+                    return;
+                }
+
+                // Data yang akan dihantar ke Google Script
+                const payload = {
+                    action: 'submitScore',
+                    studentId: student.kp,
+                    penilai: this.currentPenilai,
+                    category: this.currentCategory,
+                    scores: student.tempScore
+                };
+
+                // Ubah butang jadi "Menyimpan..."
+                const originalText = event.currentTarget.innerHTML;
+                event.currentTarget.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Menyimpan...`;
+                event.currentTarget.disabled = true;
+
+                try {
+                    // Hantar data (POST Request)
+                    await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    // Notifikasi Berjaya
+                    alert(`Markah berjaya disimpan untuk ${student.nama}!`);
+                    
+                    // Update paparan jadi HIJAU (Selesai) tanpa perlu refresh page
+                    let total = student.tempScore.reduce((a, b) => parseFloat(a) + parseFloat(b), 0);
+                    
+                    if(this.currentCategory === 'larian') {
+                        if(this.currentPenilai === 'Penilai 1') student.larian_p1 = total;
+                        else student.larian_p2 = total;
+                    } else {
+                        if(this.currentPenilai === 'Penilai 1') student.lontaran_p1 = total;
+                        else student.lontaran_p2 = total;
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    alert("Ralat sambungan. Sila cuba lagi.");
+                } finally {
+                    // Kembalikan butang asal
+                    event.currentTarget.innerHTML = originalText;
+                    event.currentTarget.disabled = false;
+                }
+            }
+        },
+        mounted() {
+            this.fetchData();
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
